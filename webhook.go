@@ -8,17 +8,25 @@ import (
 )
 
 func NewWebhook(url string) Webhook {
-	return Webhook{url: url}
+	w := Webhook{url: url, c: make(chan string)}
+	go w.waitForMessage() // start a goroutine to send POST requests
+	return w
 }
 
 type Webhook struct {
-	logger logrus.FieldLogger
-	url    string
+	logger 	logrus.FieldLogger
+	url    	string
+	c		chan string
 }
 
 func (w Webhook) WithLogger(logger logrus.FieldLogger) Webhook {
 	w.logger = logger
 	return w
+}
+
+// Message sends a message to the channel where the webhook is set up.
+func (w Webhook) Message(a ...interface{}) {
+	w.c <- filterColor(fmt.Sprint(a...))
 }
 
 func (w Webhook) postMessage(m string) error {
@@ -33,12 +41,11 @@ func (w Webhook) postMessage(m string) error {
 	return nil
 }
 
-// Message sends a message to the channel where the webhook is set up.
-func (w Webhook) Message(a ...interface{}) {
-	go func() {
-		err := w.postMessage(filterColor(fmt.Sprint(a...)))
+func (w Webhook) waitForMessage() {
+	for {
+		err := w.postMessage(<-w.c)
 		if err != nil {
 			w.logger.Errorln(err)
 		}
-	}()
+	}
 }
